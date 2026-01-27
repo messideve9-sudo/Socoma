@@ -9,8 +9,11 @@ from io import BytesIO
 import json
 import traceback
 
+# ==================== FORCER LA CRÉATION DE LA BASE DE DONNÉES ====================
+print("🔧 Démarrage de l'application SOCoMA...")
+
 app = Flask(__name__)
-# MODIFICATION POUR RENDER : utiliser os.environ
+# CONFIGURATION POUR RENDER
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'socoma-creances-2024-secret-key')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///creances.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -21,7 +24,7 @@ login_manager.login_view = 'login'
 login_manager.login_message = 'Veuillez vous connecter pour accéder à cette page.'
 login_manager.login_message_category = 'warning'
 
-# Données des 4 commerciaux COMPLETS
+# ==================== DONNÉES DES COMMERCIAUX ====================
 COMMERCIAUX_DATA = {
     'YAYA CAMARA': {
         'clients': [
@@ -105,7 +108,7 @@ COMMERCIAUX_DATA = {
     }
 }
 
-# Modèles de base de données
+# ==================== MODÈLES DE BASE DE DONNÉES ====================
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -171,11 +174,45 @@ class Creance(db.Model):
             self.situation_paiement = 'EN COURS'
             self.jours_retard = 0
 
+# ==================== INITIALISATION FORCÉE DE LA BASE ====================
+print("📦 Initialisation de la base de données...")
+with app.app_context():
+    try:
+        # Créer les tables
+        db.create_all()
+        print("✅ Tables de base de données créées")
+        
+        # Créer les utilisateurs par défaut si nécessaire
+        if not User.query.filter_by(username='admin').first():
+            admin = User(username='admin', role='admin')
+            admin.set_password('admin123')
+            db.session.add(admin)
+            
+            commercial = User(username='commercial', role='commercial', commercial='YAYA CAMARA')
+            commercial.set_password('commercial123')
+            db.session.add(commercial)
+            
+            user = User(username='user', role='user')
+            user.set_password('user123')
+            db.session.add(user)
+            
+            db.session.commit()
+            print("✅ Utilisateurs par défaut créés:")
+            print("   - admin / admin123")
+            print("   - commercial / commercial123")
+            print("   - user / user123")
+        else:
+            print("✅ Utilisateurs existent déjà")
+            
+    except Exception as e:
+        print(f"⚠️ Erreur lors de l'initialisation: {str(e)}")
+
+# ==================== CONFIGURATION LOGIN ====================
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Filtres Jinja2
+# ==================== FILTRES JINJA2 ====================
 @app.template_filter('format_money')
 def format_money_filter(value):
     if value is None:
@@ -200,6 +237,8 @@ def format_date_filter(value):
 def inject_now():
     return {'now': datetime.now()}
 
+# ==================== TOUTES LES ROUTES ====================
+
 # Routes principales
 @app.route('/')
 @login_required
@@ -220,7 +259,6 @@ def accueil():
     
     tpar = (montant_retard / total_creances * 100) if total_creances > 0 else 0
     
-    # CORRECTION : Ajouter montant_a_solder
     montant_a_solder = total_solde
     
     # Statistiques par commercial
@@ -228,7 +266,7 @@ def accueil():
     commerciaux_list = [current_user.commercial] if current_user.role == 'commercial' else COMMERCIAUX_DATA.keys()
     
     for commercial in commerciaux_list:
-        if commercial:  # Vérifier que commercial n'est pas None
+        if commercial:
             comm_creances = [c for c in creances if c.commercial == commercial]
             total_comm = sum(c.montant for c in comm_creances)
             retard_comm = sum(c.solde for c in comm_creances if c.situation_paiement == 'EN RETARD')
@@ -247,7 +285,7 @@ def accueil():
                          total_versement=total_versement,
                          total_solde=total_solde,
                          montant_retard=montant_retard,
-                         montant_a_solder=montant_a_solder,  # CORRECTION AJOUTÉE
+                         montant_a_solder=montant_a_solder,
                          tpar=tpar,
                          creances_retard=creances_retard[:5],
                          stats_commerciaux=stats_commerciaux,
@@ -283,17 +321,15 @@ def logout():
     flash('Déconnexion réussie', 'success')
     return redirect(url_for('login'))
 
+# Routes créances
 @app.route('/creances')
 @login_required
 def liste_creances():
-    # Construire la requête de base
     query = Creance.query
     
-    # Appliquer les filtres selon le rôle
     if current_user.role == 'commercial' and current_user.commercial:
         query = query.filter_by(commercial=current_user.commercial)
     
-    # Appliquer les filtres de l'URL
     commercial_filter = request.args.get('commercial')
     statut_filter = request.args.get('statut')
     client_filter = request.args.get('client')
@@ -305,10 +341,8 @@ def liste_creances():
     if client_filter:
         query = query.filter(Creance.client.contains(client_filter))
     
-    # Trier par date de création décroissante
     creances = query.order_by(Creance.date_creation.desc()).all()
     
-    # Liste des commerciaux pour les filtres
     if current_user.role == 'commercial' and current_user.commercial:
         commerciaux_list = [current_user.commercial]
     else:
@@ -321,23 +355,19 @@ def liste_creances():
 @app.route('/creances/ajouter', methods=['GET', 'POST'])
 @login_required
 def ajouter_creance():
-    # Vérifier les permissions
     if current_user.role == 'user':
         flash('Vous n\'avez pas la permission d\'ajouter des créances', 'error')
         return redirect(url_for('liste_creances'))
     
     if request.method == 'POST':
         try:
-            # Récupérer les données du formulaire
             commercial = request.form.get('commercial')
             client_type = request.form.get('client_type')
             
-            # Validation du commercial
             if current_user.role == 'commercial' and commercial != current_user.commercial:
                 flash('Vous ne pouvez ajouter des créances que pour votre propre portefeuille', 'error')
                 return redirect(url_for('ajouter_creance'))
             
-            # Traitement du client
             if client_type == 'existant':
                 client = request.form.get('client_select')
                 marche = request.form.get('marche')
@@ -350,7 +380,6 @@ def ajouter_creance():
                 client = f"{prenom} {nom}"
                 marche = request.form.get('nouveau_marche', '').strip()
             
-            # Validation des montants
             try:
                 montant = float(request.form.get('montant', 0))
                 versement = float(request.form.get('versement', 0))
@@ -372,7 +401,6 @@ def ajouter_creance():
             
             solde = montant - versement
             
-            # Traitement des dates
             date_facturation_str = request.form.get('date_facturation')
             if not date_facturation_str:
                 flash('La date de facturation est obligatoire', 'error')
@@ -395,7 +423,6 @@ def ajouter_creance():
             
             commentaires = request.form.get('commentaires', '').strip()
             
-            # Créer la nouvelle créance
             nouvelle_creance = Creance(
                 commercial=commercial,
                 client=client,
@@ -409,10 +436,8 @@ def ajouter_creance():
                 created_by=current_user.username
             )
             
-            # Mettre à jour le statut
             nouvelle_creance.update_statut()
             
-            # Sauvegarder dans la base de données
             db.session.add(nouvelle_creance)
             db.session.commit()
             
@@ -422,9 +447,7 @@ def ajouter_creance():
         except Exception as e:
             db.session.rollback()
             flash(f'Erreur lors de l\'ajout: {str(e)}', 'error')
-            print(f"Erreur détaillée: {traceback.format_exc()}")
     
-    # Préparer les données pour le template
     commerciaux_disponibles = []
     if current_user.role == 'commercial':
         commerciaux_disponibles = [current_user.commercial]
@@ -440,14 +463,12 @@ def ajouter_creance():
 def modifier_creance(id):
     creance = Creance.query.get_or_404(id)
     
-    # Vérifier les permissions
     if current_user.role == 'commercial' and creance.commercial != current_user.commercial:
         flash('Vous n\'avez pas la permission de modifier cette créance', 'error')
         return redirect(url_for('liste_creances'))
     
     if request.method == 'POST':
         try:
-            # Récupérer le nouveau versement
             versement_str = request.form.get('versement', '0')
             try:
                 nouveau_versement = float(versement_str)
@@ -455,7 +476,6 @@ def modifier_creance(id):
                 flash('Le versement doit être un nombre valide', 'error')
                 return redirect(url_for('modifier_creance', id=id))
             
-            # Validation du versement
             if nouveau_versement < 0:
                 flash('Le versement ne peut pas être négatif', 'error')
                 return redirect(url_for('modifier_creance', id=id))
@@ -464,11 +484,9 @@ def modifier_creance(id):
                 flash('Le versement ne peut pas dépasser le montant initial', 'error')
                 return redirect(url_for('modifier_creance', id=id))
             
-            # Mettre à jour la créance
             creance.versement = nouveau_versement
             creance.solde = creance.montant - nouveau_versement
             
-            # Mettre à jour la date d'échéance si fournie
             date_echeance_str = request.form.get('date_echeance')
             if date_echeance_str:
                 try:
@@ -477,13 +495,8 @@ def modifier_creance(id):
                     flash('Format de date d\'échéance invalide', 'error')
                     return redirect(url_for('modifier_creance', id=id))
             
-            # Mettre à jour les commentaires
             creance.commentaires = request.form.get('commentaires', '').strip()
-            
-            # Mettre à jour le statut
             creance.update_statut()
-            
-            # Sauvegarder
             db.session.commit()
             
             flash('Créance modifiée avec succès !', 'success')
@@ -498,7 +511,6 @@ def modifier_creance(id):
 @app.route('/creances/supprimer/<int:id>')
 @login_required
 def supprimer_creance(id):
-    # Vérifier les permissions
     if current_user.role != 'admin':
         flash('Accès réservé aux administrateurs', 'error')
         return redirect(url_for('liste_creances'))
@@ -519,13 +531,11 @@ def supprimer_creance(id):
 @app.route('/tableau-bord')
 @login_required
 def tableau_bord():
-    # Récupérer les créances selon les permissions
     if current_user.role == 'commercial' and current_user.commercial:
         creances = Creance.query.filter_by(commercial=current_user.commercial).all()
     else:
         creances = Creance.query.all()
     
-    # Statistiques globales
     total_creances = sum(c.montant for c in creances) if creances else 0
     total_versement = sum(c.versement for c in creances) if creances else 0
     total_solde = sum(c.solde for c in creances) if creances else 0
@@ -533,17 +543,14 @@ def tableau_bord():
     creances_retard = [c for c in creances if c.situation_paiement == 'EN RETARD']
     montant_retard = sum(c.solde for c in creances_retard) if creances_retard else 0
     
-    # CORRECTION : Ajouter montant_a_solder
     montant_a_solder = total_solde
-    
     tpar = (montant_retard / total_creances * 100) if total_creances > 0 else 0
     
-    # Statistiques par commercial
     stats_commerciaux = {}
     commerciaux_list = [current_user.commercial] if current_user.role == 'commercial' else COMMERCIAUX_DATA.keys()
     
     for commercial in commerciaux_list:
-        if commercial:  # Vérifier que commercial n'est pas None
+        if commercial:
             comm_creances = [c for c in creances if c.commercial == commercial]
             total_comm = sum(c.montant for c in comm_creances)
             retard_comm = sum(c.solde for c in comm_creances if c.situation_paiement == 'EN RETARD')
@@ -556,7 +563,6 @@ def tableau_bord():
                 'solde': solde_comm
             }
     
-    # Top retards
     top_retard = sorted(creances_retard, key=lambda x: x.jours_retard or 0, reverse=True)[:5]
     
     return render_template('tableau_bord.html',
@@ -564,7 +570,7 @@ def tableau_bord():
                          total_versement=total_versement,
                          total_solde=total_solde,
                          montant_retard=montant_retard,
-                         montant_a_solder=montant_a_solder,  # CORRECTION AJOUTÉE
+                         montant_a_solder=montant_a_solder,
                          tpar=tpar,
                          creances_retard=creances_retard,
                          top_retard=top_retard,
@@ -573,13 +579,11 @@ def tableau_bord():
 @app.route('/recap-clients')
 @login_required
 def recap_clients():
-    # Récupérer les créances selon les permissions
     if current_user.role == 'commercial' and current_user.commercial:
         creances = Creance.query.filter_by(commercial=current_user.commercial).all()
     else:
         creances = Creance.query.all()
     
-    # Groupement par client
     clients_data = {}
     for creance in creances:
         client_key = creance.client
@@ -606,18 +610,15 @@ def recap_clients():
     
     clients_recap = list(clients_data.values())
     
-    # Totaux
     total_montant = sum(c['total_montant'] for c in clients_recap)
     total_versement = sum(c['total_versement'] for c in clients_recap)
     total_solde = sum(c['total_solde'] for c in clients_recap)
     total_creances = len(creances)
     
-    # Filtre par commercial
     selected_commercial = request.args.get('commercial')
     if selected_commercial and current_user.role != 'commercial':
         clients_recap = [c for c in clients_recap if c['commercial'] == selected_commercial]
     
-    # Liste des commerciaux pour les filtres
     if current_user.role == 'commercial':
         commerciaux_list = [current_user.commercial]
     else:
@@ -637,10 +638,8 @@ def recap_clients():
 def detail_client(client_name):
     client_name = client_name.replace('_', ' ')
     
-    # Construire la requête
     query = Creance.query.filter_by(client=client_name)
     
-    # Vérifier les permissions
     if current_user.role == 'commercial' and current_user.commercial:
         query = query.filter_by(commercial=current_user.commercial)
     
@@ -650,12 +649,10 @@ def detail_client(client_name):
         flash('Client non trouvé ou vous n\'avez pas accès à ce client', 'error')
         return redirect(url_for('recap_clients'))
     
-    # Calcul des totaux
     total_montant = sum(c.montant for c in creances) if creances else 0
     total_versement = sum(c.versement for c in creances) if creances else 0
     total_solde = sum(c.solde for c in creances) if creances else 0
     
-    # Dernière date d'échéance
     dates_echeance = [c.date_echeance for c in creances if c.date_echeance]
     derniere_date = max(dates_echeance) if dates_echeance else None
     
@@ -670,7 +667,6 @@ def detail_client(client_name):
 @app.route('/commerciaux')
 @login_required
 def commerciaux():
-    # Récupérer les créances selon les permissions
     if current_user.role == 'commercial' and current_user.commercial:
         creances = Creance.query.filter_by(commercial=current_user.commercial).all()
         commerciaux_list = [current_user.commercial]
@@ -678,10 +674,9 @@ def commerciaux():
         creances = Creance.query.all()
         commerciaux_list = list(COMMERCIAUX_DATA.keys())
     
-    # Statistiques par commercial
     stats = {}
     for commercial in commerciaux_list:
-        if commercial:  # Vérifier que commercial n'est pas None
+        if commercial:
             comm_creances = [c for c in creances if c.commercial == commercial]
             stats[commercial] = {
                 'total_creances': len(comm_creances),
@@ -695,6 +690,7 @@ def commerciaux():
                          commerciaux=COMMERCIAUX_DATA,
                          stats=stats)
 
+# Gestion utilisateurs
 @app.route('/gestion-utilisateurs')
 @login_required
 def gestion_utilisateurs():
@@ -714,13 +710,11 @@ def creer_compte():
     
     if request.method == 'POST':
         try:
-            # Récupérer les données du formulaire
             username = request.form.get('username', '').strip()
             password = request.form.get('password', '').strip()
             role = request.form.get('role', 'user')
             commercial = request.form.get('commercial', '').strip() if role == 'commercial' else None
             
-            # Validation
             if not username:
                 flash('Le nom d\'utilisateur est obligatoire', 'error')
                 return redirect(url_for('creer_compte'))
@@ -737,13 +731,11 @@ def creer_compte():
                 flash('Vous devez sélectionner un commercial pour un compte commercial', 'error')
                 return redirect(url_for('creer_compte'))
             
-            # Vérifier si l'utilisateur existe déjà
             existing_user = User.query.filter_by(username=username).first()
             if existing_user:
                 flash('Ce nom d\'utilisateur existe déjà', 'error')
                 return redirect(url_for('creer_compte'))
             
-            # Créer le nouvel utilisateur
             nouvel_utilisateur = User(
                 username=username,
                 role=role,
@@ -751,7 +743,6 @@ def creer_compte():
             )
             nouvel_utilisateur.set_password(password)
             
-            # Sauvegarder
             db.session.add(nouvel_utilisateur)
             db.session.commit()
             
@@ -771,7 +762,6 @@ def supprimer_utilisateur(id):
         flash('Accès réservé aux administrateurs', 'error')
         return redirect(url_for('gestion_utilisateurs'))
     
-    # Empêcher la suppression de son propre compte
     if current_user.id == id:
         flash('Vous ne pouvez pas supprimer votre propre compte', 'error')
         return redirect(url_for('gestion_utilisateurs'))
@@ -789,16 +779,15 @@ def supprimer_utilisateur(id):
     
     return redirect(url_for('gestion_utilisateurs'))
 
+# Export Excel
 @app.route('/export-excel')
 @login_required
 def export_excel():
-    # Récupérer les créances selon les permissions
     if current_user.role == 'commercial' and current_user.commercial:
         creances = Creance.query.filter_by(commercial=current_user.commercial).all()
     else:
         creances = Creance.query.all()
     
-    # Préparer les données pour Excel
     data = []
     for creance in creances:
         data.append({
@@ -819,15 +808,12 @@ def export_excel():
             'Date Création': creance.date_creation.strftime('%d/%m/%Y %H:%M')
         })
     
-    # Créer le DataFrame
     df = pd.DataFrame(data)
-    
-    # Créer un fichier Excel en mémoire
     output = BytesIO()
+    
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='Créances', index=False)
         
-        # Ajouter un résumé
         if current_user.role != 'commercial':
             summary_data = {
                 'Commercial': list(COMMERCIAUX_DATA.keys()),
@@ -838,7 +824,6 @@ def export_excel():
     
     output.seek(0)
     
-    # Générer le nom du fichier
     filename = f'creances_socoma_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
     if current_user.role == 'commercial':
         filename = f'creances_{current_user.commercial.replace(" ", "_")}_{datetime.now().strftime("%Y%m%d")}.xlsx'
@@ -850,6 +835,7 @@ def export_excel():
         download_name=filename
     )
 
+# Routes admin
 @app.route('/admin/reset-creances', methods=['GET', 'POST'])
 @login_required
 def admin_reset_creances():
@@ -880,8 +866,6 @@ def admin_reset_creances():
         reason = request.form.get('reason')
         confirmation_code = request.form.get('confirmation_code')
         
-        # Ici, vous pourriez implémenter la logique de réinitialisation
-        # Pour l'instant, on simule l'action
         flash(f'Action {action} programmée pour {commercial}. Raison: {reason}', 'info')
         return redirect(url_for('admin_reset_creances', commercial=commercial))
     
@@ -903,21 +887,17 @@ def import_creances():
         file = request.files['file']
         if file.filename != '':
             try:
-                # Lire le fichier
                 if file.filename.endswith('.csv'):
                     df = pd.read_csv(file)
                 else:
                     df = pd.read_excel(file)
                 
-                # Initialiser les compteurs
                 imported = 0
                 errors = 0
                 ignored = 0
                 
-                # Traiter chaque ligne
                 for _, row in df.iterrows():
                     try:
-                        # Validation des données obligatoires
                         commercial = row.get('Commercial')
                         client = row.get('Client')
                         montant = row.get('Montant')
@@ -926,7 +906,6 @@ def import_creances():
                             ignored += 1
                             continue
                         
-                        # Convertir les montants
                         try:
                             montant_val = float(montant)
                             versement_val = float(row.get('Versement', 0))
@@ -934,7 +913,6 @@ def import_creances():
                             ignored += 1
                             continue
                         
-                        # Traiter les dates
                         date_facturation_str = str(row.get('Date Facturation', ''))
                         date_echeance_str = str(row.get('Date Échéance', ''))
                         
@@ -953,7 +931,6 @@ def import_creances():
                             except:
                                 pass
                         
-                        # Créer la créance
                         nouvelle_creance = Creance(
                             commercial=str(commercial),
                             client=str(client),
@@ -973,9 +950,7 @@ def import_creances():
                         
                     except Exception as e:
                         errors += 1
-                        print(f"Erreur lors de l'import ligne {_}: {e}")
                 
-                # Sauvegarder toutes les créances
                 db.session.commit()
                 
                 import_results = {
@@ -992,7 +967,7 @@ def import_creances():
     
     return render_template('import_creances.html', import_results=import_results)
 
-# Gestion des erreurs
+# ==================== GESTION DES ERREURS ====================
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
@@ -1005,57 +980,12 @@ def internal_server_error(e):
 def forbidden(e):
     return render_template('403.html'), 403
 
-# ==================== CORRECTION IMPORTANTE ====================
-# UN SEUL INIT_DB, PAS DE DUPLICATION !
-
-def init_db():
-    """Initialiser la base de données"""
-    with app.app_context():
-        # Créer toutes les tables
-        db.create_all()
-        
-        # Vérifier si l'administrateur existe
-        admin = User.query.filter_by(username='admin').first()
-        if not admin:
-            # Créer l'administrateur
-            admin = User(username='admin', role='admin')
-            admin.set_password('admin123')
-            db.session.add(admin)
-            
-            # Créer un compte commercial exemple
-            commercial = User(username='commercial', role='commercial', commercial='YAYA CAMARA')
-            commercial.set_password('commercial123')
-            db.session.add(commercial)
-            
-            # Créer un compte utilisateur exemple
-            user = User(username='user', role='user')
-            user.set_password('user123')
-            db.session.add(user)
-            
-            db.session.commit()
-            print("✅ Base de données initialisée avec des utilisateurs exemple:")
-            print("   - admin / admin123 (administrateur)")
-            print("   - commercial / commercial123 (commercial: YAYA CAMARA)")
-            print("   - user / user123 (utilisateur standard)")
-
-# ==================== UN SEUL POINT D'ENTRÉE ====================
+# ==================== POINT D'ENTRÉE PRINCIPAL ====================
 if __name__ == '__main__':
-    # Initialiser la base de données
-    init_db()
-    
-    # PORT POUR RENDER
     port = int(os.environ.get('PORT', 5000))
-    
-    # Lancer l'application
-    print("\n" + "="*50)
-    print("SUIVI DES CRÉANCES SOCoMA")
-    print("="*50)
-    print(f"🚀 Serveur démarré sur: http://0.0.0.0:{port}")
-    print("📂 Base de données: creances.db")
-    print("👤 Compte administrateur: admin / admin123")
-    print("👤 Compte commercial: commercial / commercial123")
-    print("👤 Compte utilisateur: user / user123")
-    print("="*50 + "\n")
-    
-    # IMPORTANT: debug=False pour Render (production)
+    print(f"\n🚀 Application SOCoMA démarrée sur le port {port}")
+    print("   Accès: admin / admin123")
+    print("   Accès: commercial / commercial123")
+    print("   Accès: user / user123")
+    print("   URL: http://0.0.0.0:" + str(port))
     app.run(debug=False, host='0.0.0.0', port=port)
