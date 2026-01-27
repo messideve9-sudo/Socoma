@@ -1,3 +1,4 @@
+import os
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -7,11 +8,11 @@ import pandas as pd
 from io import BytesIO
 import json
 import traceback
-import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'socoma-creances-2024-secret-key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///creances.db'
+# MODIFICATION POUR RENDER : utiliser os.environ
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'socoma-creances-2024-secret-key')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///creances.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -1004,8 +1005,11 @@ def internal_server_error(e):
 def forbidden(e):
     return render_template('403.html'), 403
 
-# Initialisation de la base de données
+# ==================== CORRECTION IMPORTANTE ====================
+# UN SEUL INIT_DB, PAS DE DUPLICATION !
+
 def init_db():
+    """Initialiser la base de données"""
     with app.app_context():
         # Créer toutes les tables
         db.create_all()
@@ -1029,71 +1033,29 @@ def init_db():
             db.session.add(user)
             
             db.session.commit()
-            print("Base de données initialisée avec des utilisateurs exemple:")
-            print("- admin / admin123 (administrateur)")
-            print("- commercial / commercial123 (commercial: YAYA CAMARA)")
-            print("- user / user123 (utilisateur standard)")
+            print("✅ Base de données initialisée avec des utilisateurs exemple:")
+            print("   - admin / admin123 (administrateur)")
+            print("   - commercial / commercial123 (commercial: YAYA CAMARA)")
+            print("   - user / user123 (utilisateur standard)")
 
-# Point d'entrée
+# ==================== UN SEUL POINT D'ENTRÉE ====================
 if __name__ == '__main__':
     # Initialiser la base de données
     init_db()
+    
+    # PORT POUR RENDER
+    port = int(os.environ.get('PORT', 5000))
     
     # Lancer l'application
     print("\n" + "="*50)
     print("SUIVI DES CRÉANCES SOCoMA")
     print("="*50)
-    print("Serveur démarré sur: http://localhost:5000")
-    print("Compte administrateur: admin / admin123")
-    print("Compte commercial: commercial / commercial123")
-    print("Compte utilisateur: user / user123")
+    print(f"🚀 Serveur démarré sur: http://0.0.0.0:{port}")
+    print("📂 Base de données: creances.db")
+    print("👤 Compte administrateur: admin / admin123")
+    print("👤 Compte commercial: commercial / commercial123")
+    print("👤 Compte utilisateur: user / user123")
     print("="*50 + "\n")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
-
-# ... (votre code actuel reste le même jusqu'à la fin) ...
-
-# Initialisation de la base de données
-def init_db():
-    with app.app_context():
-        # Créer toutes les tables
-        db.create_all()
-        
-        # Vérifier si l'administrateur existe
-        admin = User.query.filter_by(username='admin').first()
-        if not admin:
-            # Créer l'administrateur
-            admin = User(username='admin', role='admin')
-            admin.set_password('admin123')
-            db.session.add(admin)
-            
-            # Créer un compte commercial exemple
-            commercial = User(username='commercial', role='commercial', commercial='YAYA CAMARA')
-            commercial.set_password('commercial123')
-            db.session.add(commercial)
-            
-            # Créer un compte utilisateur exemple
-            user = User(username='user', role='user')
-            user.set_password('user123')
-            db.session.add(user)
-            
-            db.session.commit()
-            print("Base de données initialisée avec des utilisateurs exemple")
-
-# Point d'entrée
-if __name__ == '__main__':
-    # Initialiser la base de données
-    init_db()
-    
-    # Lancer l'application
-    print("\n" + "="*50)
-    print("SUIVI DES CRÉANCES SOCoMA")
-    print("="*50)
-    print("Serveur démarré sur: http://localhost:5000")
-    print("Compte administrateur: admin / admin123")
-    print("Compte commercial: commercial / commercial123")
-    print("Compte utilisateur: user / user123")
-    print("="*50 + "\n")
-    
-    # MODIFICATION ICI : Utiliser 0.0.0.0 pour Render
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    # IMPORTANT: debug=False pour Render (production)
+    app.run(debug=False, host='0.0.0.0', port=port)
