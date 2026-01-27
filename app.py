@@ -531,11 +531,13 @@ def supprimer_creance(id):
 @app.route('/tableau-bord')
 @login_required
 def tableau_bord():
+    # Récupérer les créances selon les permissions
     if current_user.role == 'commercial' and current_user.commercial:
         creances = Creance.query.filter_by(commercial=current_user.commercial).all()
     else:
         creances = Creance.query.all()
     
+    # Statistiques globales - AJOUTER DES VALEURS PAR DÉFAUT
     total_creances = sum(c.montant for c in creances) if creances else 0
     total_versement = sum(c.versement for c in creances) if creances else 0
     total_solde = sum(c.solde for c in creances) if creances else 0
@@ -544,8 +546,14 @@ def tableau_bord():
     montant_retard = sum(c.solde for c in creances_retard) if creances_retard else 0
     
     montant_a_solder = total_solde
-    tpar = (montant_retard / total_creances * 100) if total_creances > 0 else 0
     
+    # PROTECTION CONTRE DIVISION PAR ZÉRO
+    if total_creances > 0:
+        tpar = (montant_retard / total_creances * 100)
+    else:
+        tpar = 0
+    
+    # Statistiques par commercial
     stats_commerciaux = {}
     commerciaux_list = [current_user.commercial] if current_user.role == 'commercial' else COMMERCIAUX_DATA.keys()
     
@@ -556,13 +564,20 @@ def tableau_bord():
             retard_comm = sum(c.solde for c in comm_creances if c.situation_paiement == 'EN RETARD')
             solde_comm = sum(c.solde for c in comm_creances)
             
+            # PROTECTION CONTRE DIVISION PAR ZÉRO
+            performance = 0
+            if total_comm > 0:
+                performance = ((total_comm - retard_comm) / total_comm) * 100
+            
             stats_commerciaux[commercial] = {
                 'count': len(comm_creances),
                 'total': total_comm,
                 'retard': retard_comm,
-                'solde': solde_comm
+                'solde': solde_comm,
+                'performance': performance  # AJOUTER CE CHAMP
             }
     
+    # Top retards
     top_retard = sorted(creances_retard, key=lambda x: x.jours_retard or 0, reverse=True)[:5]
     
     return render_template('tableau_bord.html',
