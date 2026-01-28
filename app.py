@@ -13,24 +13,27 @@ import traceback
 print("🔧 Démarrage de l'application SOCoMA...")
 
 app = Flask(__name__)
-# CONFIGURATION POUR RENDER AVEC POSTGRESQL
+# CONFIGURATION INTELLIGENTE POUR RENDER
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'socoma-creances-2024-secret-key')
 
-# ==================== CONFIGURATION POSTGRESQL PERSISTANTE ====================
-# Récupérer l'URL depuis les variables d'environnement Render
+# ==================== CONFIGURATION BASE DE DONNÉES INTELLIGENTE ====================
+# RENDER : Si DATABASE_URL existe, utiliser PostgreSQL
+# LOCAL : Sinon, utiliser SQLite
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-# Si pas de variable d'environnement, utiliser l'URL directe (pour développement)
-if not DATABASE_URL:
-    DATABASE_URL = 'postgresql://socoma_db_user:TUoyDKkiLBTwitGb2mdWJqkXiKqMiBzw@dpg-d5pr14soud1c738g8fu0-a.frankfurt-postgres.render.com/socoma_db'
+if DATABASE_URL:
+    # PostgreSQL sur Render
+    # Correction du format si nécessaire
+    if DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+    print(f"✅ PostgreSQL Render détecté")
+else:
+    # SQLite pour développement local
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///creances.db'
+    print("💻 SQLite local (mode développement)")
 
-# Si DATABASE_URL commence par postgres:// (ancien format), convertir en postgresql://
-if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
-    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
-
-print(f"✅ Configuration base de données: {'PostgreSQL (Render)' if DATABASE_URL else 'SQLite (local)'}")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # ==============================================================================
 
 db = SQLAlchemy(app)
@@ -194,12 +197,12 @@ class Creance(db.Model):
             self.jours_retard = 0
 
 # ==================== INITIALISATION FORCÉE DE LA BASE ====================
-print("📦 Initialisation de la base de données PostgreSQL...")
+print("📦 Initialisation de la base de données...")
 with app.app_context():
     try:
-        # Créer les tables si elles n'existent pas
+        # Créer les tables
         db.create_all()
-        print("✅ Tables PostgreSQL créées")
+        print("✅ Tables de base de données créées")
         
         # Créer les utilisateurs par défaut si nécessaire
         if not User.query.filter_by(username='admin').first():
@@ -229,7 +232,6 @@ with app.app_context():
         
     except Exception as e:
         print(f"⚠️ Erreur lors de l'initialisation: {str(e)}")
-        print(f"🔍 Détails: {traceback.format_exc()}")
 
 # ==================== CONFIGURATION LOGIN ====================
 @login_manager.user_loader
@@ -260,13 +262,6 @@ def format_date_filter(value):
 @app.context_processor
 def inject_now():
     return {'now': datetime.now()}
-
-# ==================== FONCTION DE BACKUP PERSISTANT ====================
-@app.before_first_request
-def backup_on_start():
-    """Sauvegarde initiale"""
-    print("💾 Système de persistance PostgreSQL activé")
-    print("📈 Vos données sont maintenant sauvegardées de façon permanente")
 
 # ==================== TOUTES LES ROUTES ====================
 
@@ -1029,17 +1024,9 @@ def forbidden(e):
 # ==================== POINT D'ENTRÉE PRINCIPAL ====================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print("\n" + "="*50)
-    print("🚀 APPLICATION SOCoMA AVEC POSTGRESQL")
-    print("="*50)
-    print(f"🔗 Base de données: PostgreSQL sur Render")
-    print(f"📊 Persistance des données: GARANTIE")
-    print(f"🌐 Port: {port}")
-    print("="*50)
+    print(f"\n🚀 Application SOCoMA démarrée sur le port {port}")
     print("🔑 Accès par défaut:")
     print("   - admin / admin123")
     print("   - commercial / commercial123")
     print("   - user / user123")
-    print("="*50)
-    
     app.run(debug=False, host='0.0.0.0', port=port)
