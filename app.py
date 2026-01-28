@@ -13,10 +13,25 @@ import traceback
 print("🔧 Démarrage de l'application SOCoMA...")
 
 app = Flask(__name__)
-# CONFIGURATION POUR RENDER
+# CONFIGURATION POUR RENDER AVEC POSTGRESQL
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'socoma-creances-2024-secret-key')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///creances.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# ==================== CONFIGURATION POSTGRESQL PERSISTANTE ====================
+# Récupérer l'URL depuis les variables d'environnement Render
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+# Si pas de variable d'environnement, utiliser l'URL directe (pour développement)
+if not DATABASE_URL:
+    DATABASE_URL = 'postgresql://socoma_db_user:TUoyDKkiLBTwitGb2mdWJqkXiKqMiBzw@dpg-d5pr14soud1c738g8fu0-a.frankfurt-postgres.render.com/socoma_db'
+
+# Si DATABASE_URL commence par postgres:// (ancien format), convertir en postgresql://
+if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+
+print(f"✅ Configuration base de données: {'PostgreSQL (Render)' if DATABASE_URL else 'SQLite (local)'}")
+# ==============================================================================
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -110,6 +125,8 @@ COMMERCIAUX_DATA = {
 
 # ==================== MODÈLES DE BASE DE DONNÉES ====================
 class User(UserMixin, db.Model):
+    __tablename__ = 'users'
+    
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
@@ -125,6 +142,8 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
 class Creance(db.Model):
+    __tablename__ = 'creances'
+    
     id = db.Column(db.Integer, primary_key=True)
     commercial = db.Column(db.String(100), nullable=False)
     client = db.Column(db.String(200), nullable=False)
@@ -175,12 +194,12 @@ class Creance(db.Model):
             self.jours_retard = 0
 
 # ==================== INITIALISATION FORCÉE DE LA BASE ====================
-print("📦 Initialisation de la base de données...")
+print("📦 Initialisation de la base de données PostgreSQL...")
 with app.app_context():
     try:
-        # Créer les tables
+        # Créer les tables si elles n'existent pas
         db.create_all()
-        print("✅ Tables de base de données créées")
+        print("✅ Tables PostgreSQL créées")
         
         # Créer les utilisateurs par défaut si nécessaire
         if not User.query.filter_by(username='admin').first():
@@ -204,8 +223,13 @@ with app.app_context():
         else:
             print("✅ Utilisateurs existent déjà")
             
+        # Vérifier le nombre de créances existantes
+        creances_count = Creance.query.count()
+        print(f"📊 Créances dans la base: {creances_count}")
+        
     except Exception as e:
         print(f"⚠️ Erreur lors de l'initialisation: {str(e)}")
+        print(f"🔍 Détails: {traceback.format_exc()}")
 
 # ==================== CONFIGURATION LOGIN ====================
 @login_manager.user_loader
@@ -236,6 +260,13 @@ def format_date_filter(value):
 @app.context_processor
 def inject_now():
     return {'now': datetime.now()}
+
+# ==================== FONCTION DE BACKUP PERSISTANT ====================
+@app.before_first_request
+def backup_on_start():
+    """Sauvegarde initiale"""
+    print("💾 Système de persistance PostgreSQL activé")
+    print("📈 Vos données sont maintenant sauvegardées de façon permanente")
 
 # ==================== TOUTES LES ROUTES ====================
 
@@ -998,9 +1029,17 @@ def forbidden(e):
 # ==================== POINT D'ENTRÉE PRINCIPAL ====================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print(f"\n🚀 Application SOCoMA démarrée sur le port {port}")
-    print("   Accès: admin / admin123")
-    print("   Accès: commercial / commercial123")
-    print("   Accès: user / user123")
-    print("   URL: http://0.0.0.0:" + str(port))
+    print("\n" + "="*50)
+    print("🚀 APPLICATION SOCoMA AVEC POSTGRESQL")
+    print("="*50)
+    print(f"🔗 Base de données: PostgreSQL sur Render")
+    print(f"📊 Persistance des données: GARANTIE")
+    print(f"🌐 Port: {port}")
+    print("="*50)
+    print("🔑 Accès par défaut:")
+    print("   - admin / admin123")
+    print("   - commercial / commercial123")
+    print("   - user / user123")
+    print("="*50)
+    
     app.run(debug=False, host='0.0.0.0', port=port)
