@@ -59,9 +59,9 @@ COMMERCIAUX_DATA = {
             {'prenom': 'SALIF', 'nom': 'DJOURTE', 'marche': 'MEDINE', 'contact': '76 19 26 65'},
             {'prenom': 'BA OUMAR', 'nom': 'SOUMOUNOU', 'marche': 'MEDINE', 'contact': '76 08 97 21'},
             {'prenom': 'ISSA', 'nom': 'DOLO', 'marche': 'MORIBABOUGOU', 'contact': '66 69 66 81'},
-            {'prenom': 'ISSA', 'nom': 'DIAWARA', 'marche': 'NAFADJI', 'contact': '76 24 05 56'},
-            {'prenom': 'ISSA', 'nom': 'FAMATA', 'marche': 'NGOLONINA', 'contact': '76 41 99 39'},
-            {'prenom': 'ISSA', 'nom': 'TRAORE', 'marche': 'TITIBOUGOU', 'contact': '65 38 80 87'}
+            {'prenom': 'FAMOUSSA', 'nom': 'DIAWARA', 'marche': 'NAFADJI', 'contact': '76 24 05 56'},
+            {'prenom': 'BASSIDIKY', 'nom': 'FAMATA', 'marche': 'NGOLONINA', 'contact': '76 41 99 39'},
+            {'prenom': 'MAMA', 'nom': 'TRAORE', 'marche': 'TITIBOUGOU', 'contact': '65 38 80 87'}
         ]
     },
     'BADRA KEITA': {
@@ -1029,4 +1029,5 @@ if __name__ == '__main__':
     print("   - admin / admin123")
     print("   - commercial / commercial123")
     print("   - user / user123")
+
     app.run(debug=False, host='0.0.0.0', port=port)
