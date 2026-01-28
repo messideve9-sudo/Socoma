@@ -101,6 +101,7 @@ COMMERCIAUX_DATA = {
             {'prenom': 'MOUSSA', 'nom': 'GACKOU', 'marche': 'KALABAN PRINCIPAL', 'contact': '79 06 13 22'},
             {'prenom': 'NOUHOUM', 'nom': 'TRAORE', 'marche': 'NIAMAKORO KOURANI', 'contact': '66 41 55 31'},
             {'prenom': 'KAROUNGA', 'nom': 'DIARRA', 'marche': 'OLYMPE', 'contact': '78 11 92 59'},
+            {'prenom': 'MOHAMED', 'nom': 'TRAORE', 'marche': 'TOROKOROBOUGOU', 'contact': '76 18 42 12'},
             {'prenom': 'FATOUMATA', 'nom': 'DIAKITE', 'marche': 'SABALIBOUGOU', 'contact': '83 91 54 47'}
         ]
     },
@@ -206,23 +207,23 @@ with app.app_context():
         
         # Créer les utilisateurs par défaut si nécessaire
         if not User.query.filter_by(username='admin').first():
-            admin = User(username='admin', role='admin')
-            admin.set_password('admin123')
+            admin = User(username='DAOUDA CISSE', role='admin')
+            admin.set_password('Csol2102@!*')
             db.session.add(admin)
             
-            commercial = User(username='commercial', role='commercial', commercial='YAYA CAMARA')
-            commercial.set_password('commercial123')
+            commercial = User(username='CAMARA YAYA', role='commercial', commercial='YAYA CAMARA')
+            commercial.set_password('Socoma2030@')
             db.session.add(commercial)
             
-            user = User(username='user', role='user')
-            user.set_password('user123')
+            user = User(username='BDM', role='user')
+            user.set_password('Diallobdm2026@')
             db.session.add(user)
             
             db.session.commit()
             print("✅ Utilisateurs par défaut créés:")
-            print("   - admin / admin123")
-            print("   - commercial / commercial123")
-            print("   - user / user123")
+            print("   - DAOUDA CISSE / Csol2102@!*")
+            print("   - CAMARA YAYA / Socoma2030@")
+            print("   - BDM / Diallobdm2026@")
         else:
             print("✅ Utilisateurs existent déjà")
             
@@ -1029,5 +1030,4 @@ if __name__ == '__main__':
     print("   - admin / admin123")
     print("   - commercial / commercial123")
     print("   - user / user123")
-
     app.run(debug=False, host='0.0.0.0', port=port)
